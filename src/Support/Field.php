@@ -130,38 +130,7 @@ abstract class Field
                 throw new AuthorizationError($this->getAuthorizationMessage());
             }
 
-            $method = new ReflectionMethod($this, 'resolve');
-
-            $additionalParams = array_slice($method->getParameters(), 3);
-
-            $additionalArguments = array_map(function ($param) use ($arguments) {
-                $className = null !== $param->getClass() ? $param->getClass()->getName() : null;
-
-                if (null === $className) {
-                    throw new InvalidArgumentException("'{$param->name}' could not be injected");
-                }
-
-                if (Closure::class === $param->getType()->getName()) {
-                    return function (int $depth = null) use ($arguments): SelectFields {
-                        return $this->instanciateSelectFields($arguments, $depth);
-                    };
-                }
-
-                if (SelectFields::class === $className) {
-                    return $this->instanciateSelectFields($arguments);
-                }
-
-                if (ResolveInfo::class === $className) {
-                    return $arguments[3];
-                }
-
-                return app()->make($className);
-            }, $additionalParams);
-
-            return call_user_func_array($resolver, array_merge(
-                [$arguments[0], $arguments[1], $arguments[2]],
-                $additionalArguments
-            ));
+            return call_user_func_array($resolver, $this->getResolverArguments('resolve', $arguments));
         };
     }
 
@@ -175,6 +144,42 @@ abstract class Field
     protected function aliasArgs(array $arguments): array
     {
         return (new AliasArguments($this->args(), $arguments[1]))->get();
+    }
+
+    protected function getResolverArguments(string $resolver, array $arguments): array
+    {
+        $method = new ReflectionMethod($this, $resolver);
+
+        $additionalParams = array_slice($method->getParameters(), 3);
+
+        $additionalArguments = array_map(function ($param) use ($arguments) {
+            $className = null !== $param->getClass() ? $param->getClass()->getName() : null;
+
+            if (null === $className) {
+                throw new InvalidArgumentException("'{$param->name}' could not be injected");
+            }
+
+            if (Closure::class === $param->getType()->getName()) {
+                return function (int $depth = null) use ($arguments): SelectFields {
+                    return $this->instanciateSelectFields($arguments, $depth);
+                };
+            }
+
+            if (SelectFields::class === $className) {
+                return $this->instanciateSelectFields($arguments);
+            }
+
+            if (ResolveInfo::class === $className) {
+                return $arguments[3];
+            }
+
+            return App::make($className);
+        }, $additionalParams);
+
+        return array_merge(
+            [$arguments[0], $arguments[1], $arguments[2]],
+            $additionalArguments
+        );
     }
 
     protected function getArgs(array $arguments): array
